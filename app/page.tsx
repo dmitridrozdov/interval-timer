@@ -1,65 +1,255 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import React, { useState, useEffect, useRef } from 'react';
+import { Play, Pause, RotateCcw } from 'lucide-react';
+
+interface TimerConfig {
+  name: string;
+  sets: number;
+  action: number;
+  break: number;
+}
+
+const TIMER_CONFIGS: TimerConfig[] = [
+  { name: 'HIIT Workout', sets: 8, action: 30, break: 15 },
+  { name: 'Tabata', sets: 8, action: 20, break: 10 },
+  { name: 'Boxing Rounds', sets: 5, action: 180, break: 60 },
+  { name: 'Quick Burst', sets: 10, action: 45, break: 15 },
+  { name: 'Endurance', sets: 6, action: 90, break: 30 },
+];
+
+export default function IntervalTimer() {
+  const [selectedConfig, setSelectedConfig] = useState<number>(0);
+  const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [currentSet, setCurrentSet] = useState<number>(1);
+  const [timeLeft, setTimeLeft] = useState<number>(TIMER_CONFIGS[0].action);
+  const [isBreak, setIsBreak] = useState<boolean>(false);
+  const [hasStarted, setHasStarted] = useState<boolean>(false);
+  
+  const audioContextRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+  }, []);
+
+  const playBeep = (frequency: number, duration: number): void => {
+    if (!audioContextRef.current) return;
+    
+    const ctx = audioContextRef.current;
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    
+    oscillator.frequency.value = frequency;
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+    
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + duration);
+  };
+
+  const playStartSound = (): void => {
+    playBeep(880, 0.15);
+    setTimeout(() => playBeep(1046, 0.15), 150);
+  };
+
+  const playEndSound = (): void => {
+    playBeep(659, 0.15);
+    setTimeout(() => playBeep(523, 0.3), 150);
+  };
+
+  useEffect(() => {
+    const config = TIMER_CONFIGS[selectedConfig];
+    setTimeLeft(config.action);
+    setCurrentSet(1);
+    setIsBreak(false);
+    setIsRunning(false);
+    setHasStarted(false);
+  }, [selectedConfig]);
+
+  useEffect(() => {
+    if (!isRunning) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          const config = TIMER_CONFIGS[selectedConfig];
+          
+          if (!isBreak) {
+            playEndSound();
+            if (currentSet < config.sets) {
+              setIsBreak(true);
+              setTimeout(() => playStartSound(), 100);
+              return config.break;
+            } else {
+              setIsRunning(false);
+              setHasStarted(false);
+              return 0;
+            }
+          } else {
+            playEndSound();
+            setIsBreak(false);
+            setCurrentSet((s) => s + 1);
+            setTimeout(() => playStartSound(), 100);
+            return config.action;
+          }
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isRunning, isBreak, currentSet, selectedConfig]);
+
+  const handleStart = (): void => {
+    if (!hasStarted) {
+      setHasStarted(true);
+      playStartSound();
+    }
+    setIsRunning(true);
+  };
+
+  const handlePause = (): void => {
+    setIsRunning(false);
+  };
+
+  const handleReset = (): void => {
+    const config = TIMER_CONFIGS[selectedConfig];
+    setIsRunning(false);
+    setCurrentSet(1);
+    setTimeLeft(config.action);
+    setIsBreak(false);
+    setHasStarted(false);
+  };
+
+  const config: TimerConfig = TIMER_CONFIGS[selectedConfig];
+  const progress: number = isBreak 
+    ? ((config.break - timeLeft) / config.break) * 100
+    : ((config.action - timeLeft) / config.action) * 100;
+
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl">
+        {/* Config Selection */}
+        <div className="mb-8 flex flex-wrap gap-2 justify-center">
+          {TIMER_CONFIGS.map((cfg, idx) => (
+            <button
+              key={idx}
+              onClick={() => setSelectedConfig(idx)}
+              disabled={isRunning}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                selectedConfig === idx
+                  ? 'bg-white text-purple-900 shadow-lg scale-105'
+                  : 'bg-white/10 text-white hover:bg-white/20'
+              } ${isRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              {cfg.name}
+            </button>
+          ))}
+        </div>
+
+        {/* Main Timer Card */}
+        <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-white/20">
+          {/* Timer Display */}
+          <div className="relative">
+            {/* Circular Progress */}
+            <div className="relative w-72 h-72 mx-auto">
+              <svg className="transform -rotate-90 w-full h-full">
+                <circle
+                  cx="144"
+                  cy="144"
+                  r="136"
+                  stroke="rgba(255,255,255,0.1)"
+                  strokeWidth="16"
+                  fill="none"
+                />
+                <circle
+                  cx="144"
+                  cy="144"
+                  r="136"
+                  stroke={isBreak ? '#10b981' : '#8b5cf6'}
+                  strokeWidth="16"
+                  fill="none"
+                  strokeDasharray={`${2 * Math.PI * 136}`}
+                  strokeDashoffset={`${2 * Math.PI * 136 * (1 - progress / 100)}`}
+                  strokeLinecap="round"
+                  className="transition-all duration-1000 ease-linear"
+                />
+              </svg>
+              
+              {/* Center Content */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <div className={`text-6xl font-bold mb-2 transition-colors ${
+                  isBreak ? 'text-emerald-400' : 'text-purple-300'
+                }`}>
+                  {formatTime(timeLeft)}
+                </div>
+                <div className={`text-xl font-semibold mb-1 transition-colors ${
+                  isBreak ? 'text-emerald-300' : 'text-purple-200'
+                }`}>
+                  {isBreak ? 'BREAK' : 'ACTION'}
+                </div>
+                <div className="text-white/60 text-sm">
+                  Set {currentSet} of {config.sets}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Controls */}
+          <div className="flex justify-center gap-4 mt-8">
+            {!isRunning ? (
+              <button
+                onClick={handleStart}
+                className="bg-purple-600 hover:bg-purple-700 text-white rounded-full p-6 shadow-lg hover:shadow-xl transition-all hover:scale-105"
+              >
+                <Play size={32} fill="white" />
+              </button>
+            ) : (
+              <button
+                onClick={handlePause}
+                className="bg-yellow-600 hover:bg-yellow-700 text-white rounded-full p-6 shadow-lg hover:shadow-xl transition-all hover:scale-105"
+              >
+                <Pause size={32} fill="white" />
+              </button>
+            )}
+            <button
+              onClick={handleReset}
+              className="bg-slate-600 hover:bg-slate-700 text-white rounded-full p-6 shadow-lg hover:shadow-xl transition-all hover:scale-105"
             >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              <RotateCcw size={32} />
+            </button>
+          </div>
+
+          {/* Config Info */}
+          <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+            <div className="bg-white/5 rounded-xl p-4">
+              <div className="text-white/60 text-sm mb-1">Sets</div>
+              <div className="text-white text-2xl font-bold">{config.sets}</div>
+            </div>
+            <div className="bg-white/5 rounded-xl p-4">
+              <div className="text-white/60 text-sm mb-1">Action</div>
+              <div className="text-purple-300 text-2xl font-bold">{config.action}s</div>
+            </div>
+            <div className="bg-white/5 rounded-xl p-4">
+              <div className="text-white/60 text-sm mb-1">Break</div>
+              <div className="text-emerald-300 text-2xl font-bold">{config.break}s</div>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
     </div>
   );
 }
