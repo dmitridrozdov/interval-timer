@@ -11,7 +11,7 @@ interface TimerConfig {
 }
 
 const TIMER_CONFIGS: TimerConfig[] = [
-  { name: 'HIIT Workout', sets: 8, action: 30, break: 15 },
+  { name: 'HIIT Workout', sets: 3, action: 20, break: 10 },
   { name: 'Tabata', sets: 8, action: 20, break: 10 },
   { name: 'Boxing Rounds', sets: 5, action: 180, break: 60 },
   { name: 'Quick Burst', sets: 10, action: 45, break: 15 },
